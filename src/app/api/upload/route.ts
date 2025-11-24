@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { mkdir, writeFile } from 'fs/promises';
-import path from 'path';
-import crypto from 'crypto';
+import { uploadToCloudinary } from '@/backend/lib/cloudinary';
 
 const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8MB
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -32,18 +30,14 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-    await mkdir(uploadsDir, { recursive: true });
+    // Subir a Cloudinary en lugar de guardar localmente
+    const { url, publicId } = await uploadToCloudinary(buffer, 'fotografia');
 
-  const originalName = typeof file.name === 'string' ? file.name : 'upload.jpg';
-  const extension = path.extname(originalName) || '.jpg';
-    const filename = `${Date.now()}-${crypto.randomUUID()}${extension}`;
-    const filepath = path.join(uploadsDir, filename);
-
-    await writeFile(filepath, buffer);
-
-    const url = `/uploads/${filename}`;
-    return NextResponse.json({ url });
+    return NextResponse.json({ 
+      url,
+      publicId, // Guardar el publicId si necesitas eliminar la imagen después
+      message: 'Imagen subida exitosamente a Cloudinary'
+    });
   } catch (error) {
     console.error('Error uploading file:', error);
     return NextResponse.json({ error: 'Error al subir el archivo.' }, { status: 500 });
