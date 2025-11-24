@@ -63,16 +63,7 @@ export default function LoginPage() {
               </div>
             </Card>
 
-            <div className="bg-slate-100 border border-slate-200 rounded-lg p-4 text-sm">
-              <p className="font-semibold text-slate-800 mb-2">🔑 Usuarios de prueba</p>
-              <div className="space-y-1 text-slate-600">
-                <p><strong>Admin:</strong> admin@fotografia.com / 123456</p>
-                <p><strong>Cliente:</strong> maria@email.com / 123456</p>
-                <p><strong>Fotógrafo 1:</strong> ana@fotografia.com / 123456</p>
-                <p><strong>Fotógrafo 2:</strong> luis@fotografia.com / 123456</p>
-                <p><strong>Fotógrafo 3:</strong> sofia@fotografia.com / 123456</p>
-              </div>
-            </div>
+            {/* Demo users removed for production deployment */}
           </div>
         </div>
       </div>
