@@ -1,0 +1,1649 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Image from 'next/image';
+import { useAuth } from '@/frontend/repositories/AuthContext';
+import { Card } from '@/frontend/components/ui/Card';
+import { Button } from '@/frontend/components/ui/Button';
+import { Modal } from '@/frontend/components/ui/Modal';
+import { ReviewModal } from '@/frontend/components/reviews';
+import { ChatWindow } from '@/frontend/components/chat/ChatWindow';
+import { EstadoComprobante, EstadoReserva, IPaquete, IPerfilFotografo, IReserva, IUsuario } from '@/frontend/interfaces';
+
+type Reserva = IReserva & {
+  fecha?: string | Date;
+  horaInicio?: string | null;
+  horaFin?: string | null;
+  horaEvento?: string | null;
+  fotografo?: IUsuario;
+  monto?: number;
+  notas?: string | null;
+};
+
+function MisReservasContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user, loading, token } = useAuth();
+  const [reservas, setReservas] = useState<Reserva[]>([]);
+  const [loadingReservas, setLoadingReservas] = useState(true);
+  const [error, setError] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'TODAS' | EstadoReserva>('TODAS');
+
+  // Upload Proof State
+  const [activeUploadReservation, setActiveUploadReservation] = useState<Reserva | null>(null);
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofNotes, setProofNotes] = useState('');
+  const [uploadingProof, setUploadingProof] = useState(false);
+
+  // Review Proof State
+  const [reviewContext, setReviewContext] = useState({
+    reserva: null as Reserva | null,
+    decision: null as Extract<EstadoComprobante, 'APROBADO' | 'RECHAZADO'> | null,
+  });
+  const [reviewNotes, setReviewNotes] = useState('');
+  const [processingReview, setProcessingReview] = useState(false);
+
+  // Solicitud/Nueva Reserva
+  const [showSolicitudModal, setShowSolicitudModal] = useState(false);
+  const [selectedPhotographerId, setSelectedPhotographerId] = useState<number | null>(null);
+  const [solicitudPhotographer, setSolicitudPhotographer] = useState<IPerfilFotografo | null>(null);
+  const [solicitudPackages, setSolicitudPackages] = useState<IPaquete[]>([]);
+  const [selectedPackageId, setSelectedPackageId] = useState<number | null>(null);
+  const [solicitudDate, setSolicitudDate] = useState('');
+  const [solicitudTime, setSolicitudTime] = useState('');
+  const [solicitudLocation, setSolicitudLocation] = useState('');
+  const [solicitudAmount, setSolicitudAmount] = useState('');
+  const [solicitudNotes, setSolicitudNotes] = useState('');
+  const [solicitudError, setSolicitudError] = useState<string | null>(null);
+  const [solicitudSubmitting, setSolicitudSubmitting] = useState(false);
+  const [fechasOcupadas, setFechasOcupadas] = useState<string[]>([]);
+
+  // Review Modal State (para reseñas de clientes)
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewReservation, setReviewReservation] = useState<Reserva | null>(null);
+
+  // Cancellation Modal State
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReservation, setCancelReservation] = useState<Reserva | null>(null);
+  const [cancelMotivo, setCancelMotivo] = useState('');
+  const [penalizacion, setPenalizacion] = useState(0);
+  const [submittingCancellation, setSubmittingCancellation] = useState(false);
+
+  // Chat State
+  const [activeChatReservationId, setActiveChatReservationId] = useState<number | null>(null);
+  const [activeChatUserName, setActiveChatUserName] = useState<string>('');
+  const [showChatModal, setShowChatModal] = useState(false);
+
+  // Edit Reservation State
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editReservation, setEditReservation] = useState<Reserva | null>(null);
+  const [editDate, setEditDate] = useState('');
+  const [editTime, setEditTime] = useState('');
+  const [editLocation, setEditLocation] = useState('');
+  const [editAmount, setEditAmount] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [submittingEdit, setSubmittingEdit] = useState(false);
+
+  // Delete Reservation State
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteReservation, setDeleteReservation] = useState<Reserva | null>(null);
+  const [submittingDelete, setSubmittingDelete] = useState(false);
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [user, loading, router]);
+
+  useEffect(() => {
+    const photographerIdParam = searchParams?.get('fotografoId');
+    if (!photographerIdParam) return;
+    const parsed = parseInt(photographerIdParam, 10);
+    if (Number.isNaN(parsed)) return;
+    setSelectedPhotographerId(parsed);
+    setShowSolicitudModal(true);
+    // Clean URL
+    router.replace('/mis-reservas');
+  }, [searchParams, router]);
+
+  const getAuthToken = useCallback(() => {
+    if (token) return token;
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('auth_token');
+  }, [token]);
+
+  const resetSolicitudForm = () => {
+    setSelectedPhotographerId(null);
+    setSolicitudPhotographer(null);
+    setSolicitudPackages([]);
+    setSelectedPackageId(null);
+    setSolicitudDate('');
+    setSolicitudTime('');
+    setSolicitudLocation('');
+    setSolicitudAmount('');
+    setSolicitudNotes('');
+  };
+
+  const closeSolicitudModal = () => {
+    setShowSolicitudModal(false);
+    setSolicitudError(null);
+  };
+
+  const openSolicitudModal = () => {
+    setSolicitudError(null);
+    setShowSolicitudModal(true);
+  };
+
+  const handleSolicitudSubmit = async () => {
+    if (!selectedPhotographerId) {
+      setSolicitudError('Selecciona el fotógrafo con el que quieres reservar.');
+      return;
+    }
+
+    if (!solicitudDate) {
+      setSolicitudError('Selecciona la fecha tentativa del evento.');
+      return;
+    }
+
+    if (!solicitudAmount || Number(solicitudAmount) <= 0) {
+      setSolicitudError('Ingresa un monto estimado para la reserva.');
+      return;
+    }
+
+    const authToken = getAuthToken();
+    if (!authToken) {
+      setError('Tu sesión expiró, vuelve a iniciar sesión.');
+      router.push('/login');
+      return;
+    }
+
+    try {
+      setSolicitudSubmitting(true);
+      setSolicitudError(null);
+      const payload = {
+        fotografoId: solicitudPhotographer?.usuarioId ?? selectedPhotographerId,
+        paqueteId: selectedPackageId ?? undefined,
+        fechaEvento: new Date(`${solicitudDate}T00:00:00`),
+        horaEvento: solicitudTime || undefined,
+        ubicacionEvento: solicitudLocation || undefined,
+        monto: Number(solicitudAmount),
+        notas: solicitudNotes || undefined,
+      };
+
+      const response = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error || 'No se pudo crear la reserva');
+      }
+
+      closeSolicitudModal();
+      resetSolicitudForm();
+      setStatusFilter(EstadoReserva.PENDIENTE);
+      fetchReservas(EstadoReserva.PENDIENTE);
+    } catch (submissionError) {
+      console.error('Error al crear solicitud:', submissionError);
+      setSolicitudError((submissionError as Error).message);
+    } finally {
+      setSolicitudSubmitting(false);
+    }
+  };
+
+  const fetchReservas = useCallback(async (estadoSeleccionado: 'TODAS' | EstadoReserva = statusFilter) => {
+    try {
+      setLoadingReservas(true);
+      setError('');
+      const authToken = getAuthToken();
+
+      if (!authToken) {
+        setError('No hay sesión activa');
+        setReservas([]);
+        return;
+      }
+
+      const query = estadoSeleccionado !== 'TODAS' ? `?estado=${estadoSeleccionado}` : '';
+      const response = await fetch(`/api/reservations${query}`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+        setReservas(list);
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Error al cargar las reservas');
+        setReservas([]);
+      }
+    } catch (err) {
+      console.error('Error al cargar reservas:', err);
+      setError('Error al cargar las reservas');
+      setReservas([]);
+    } finally {
+      setLoadingReservas(false);
+    }
+  }, [getAuthToken, statusFilter]);
+
+  useEffect(() => {
+    if (user) {
+      fetchReservas();
+    }
+  }, [user, fetchReservas]);
+
+  useEffect(() => {
+    if (!selectedPhotographerId) {
+      setSolicitudPhotographer(null);
+      setSolicitudPackages([]);
+      setSelectedPackageId(null);
+      return;
+    }
+
+    let cancelled = false;
+    const loadPhotographerData = async () => {
+      try {
+        setSolicitudError(null);
+        // Fetch profile and packages in parallel
+        const [profileResponse, packageResponse] = await Promise.all([
+          fetch(`/api/profiles/${selectedPhotographerId}`),
+          fetch(`/api/packages?fotografoId=${selectedPhotographerId}`),
+        ]);
+
+        if (!profileResponse.ok) {
+          throw new Error('No pudimos cargar el perfil del fotógrafo');
+        }
+
+        const profilePayload = await profileResponse.json();
+        const packagePayload = packageResponse.ok ? await packageResponse.json() : { data: [] };
+
+        if (cancelled) return;
+
+        setSolicitudPhotographer(profilePayload?.data ?? null);
+
+        const normalizedPackages: IPaquete[] = Array.isArray(packagePayload?.data)
+          ? packagePayload.data
+          : packagePayload?.data?.paquetes ?? [];
+
+        setSolicitudPackages(normalizedPackages);
+
+        if (normalizedPackages.length > 0) {
+          setSelectedPackageId((current) => current ?? normalizedPackages[0].id);
+          setSolicitudAmount((current) => current || (normalizedPackages[0].precio?.toString() ?? ''));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Error loading photographer data:', err);
+          setSolicitudError('No pudimos cargar los datos del fotógrafo. Verifica el ID e inténtalo otra vez.');
+        }
+      }
+    };
+
+    loadPhotographerData();
+    return () => {
+      cancelled = true;
+    };
+
+  }, [selectedPhotographerId]);
+
+  // Cargar fechas ocupadas del fotógrafo
+  useEffect(() => {
+    if (!solicitudPhotographer?.usuarioId && !selectedPhotographerId) {
+      setFechasOcupadas([]);
+      return;
+    }
+
+    const fotografoId = solicitudPhotographer?.usuarioId ?? selectedPhotographerId;
+    if (!fotografoId) return;
+
+    let cancelled = false;
+    const loadAvailability = async () => {
+      try {
+        const response = await fetch(`/api/availability/${fotografoId}`);
+        if (!response.ok) {
+          console.warn('No se pudieron cargar fechas ocupadas');
+          return;
+        }
+
+        const data = await response.json();
+        if (!cancelled && Array.isArray(data?.fechasOcupadas)) {
+          setFechasOcupadas(data.fechasOcupadas);
+        }
+      } catch (err) {
+        console.error('Error al cargar disponibilidad:', err);
+      }
+    };
+
+    loadAvailability();
+    return () => {
+      cancelled = true;
+    };
+  }, [solicitudPhotographer, selectedPhotographerId]);
+
+  const resumen = useMemo(() => {
+    const total = reservas.length;
+    const pendientes = reservas.filter((reserva) => reserva.estado === EstadoReserva.PENDIENTE).length;
+    const confirmadas = reservas.filter((reserva) => reserva.estado === EstadoReserva.CONFIRMADA).length;
+    const completadas = reservas.filter((reserva) => reserva.estado === EstadoReserva.COMPLETADA).length;
+    return { total, pendientes, confirmadas, completadas };
+  }, [reservas]);
+
+  const comprobanteStats = useMemo(() => {
+    const base = {
+      [EstadoComprobante.NO_ENVIADO]: 0,
+      [EstadoComprobante.PENDIENTE]: 0,
+      [EstadoComprobante.APROBADO]: 0,
+      [EstadoComprobante.RECHAZADO]: 0,
+    } as Record<EstadoComprobante, number>;
+
+    reservas.forEach((reserva) => {
+      const estado = reserva.comprobanteEstado ?? EstadoComprobante.NO_ENVIADO;
+      base[estado] += 1;
+    });
+
+    return {
+      enviados: reservas.length - base[EstadoComprobante.NO_ENVIADO],
+      pendientes: base[EstadoComprobante.PENDIENTE],
+      aprobados: base[EstadoComprobante.APROBADO],
+      rechazados: base[EstadoComprobante.RECHAZADO],
+      sinEnviar: base[EstadoComprobante.NO_ENVIADO],
+    };
+  }, [reservas]);
+
+  const estadoOptions: Array<{ label: string; value: 'TODAS' | EstadoReserva }> = [
+    { label: 'Todas', value: 'TODAS' },
+    { label: 'Pendientes', value: EstadoReserva.PENDIENTE },
+    { label: 'Confirmadas', value: EstadoReserva.CONFIRMADA },
+    { label: 'Completadas', value: EstadoReserva.COMPLETADA },
+    { label: 'Canceladas', value: EstadoReserva.CANCELADA },
+  ];
+
+  const handleCambiarEstado = async (id: number, nuevoEstado: EstadoReserva) => {
+    try {
+      const authToken = getAuthToken();
+      if (!authToken) {
+        setError('Sesión expirada, vuelve a iniciar sesión.');
+        return;
+      }
+
+      // Si se intenta completar, verificar que haya comprobante aprobado
+      if (nuevoEstado === EstadoReserva.COMPLETADA && isPhotographer) {
+        const reserva = reservas.find(r => r.id === id);
+        if (!reserva) return;
+
+        if (reserva.comprobanteEstado !== EstadoComprobante.APROBADO) {
+          alert('⚠️ No puedes completar la reserva sin que el cliente haya subido un comprobante de pago aprobado.\n\nEstado actual: ' + getComprobanteLabel(reserva.comprobanteEstado));
+          return;
+        }
+      }
+
+      const response = await fetch(`/api/reservations/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ estado: nuevoEstado }),
+      });
+
+      if (response.ok) {
+        fetchReservas();
+      } else {
+        const data = await response.json();
+        alert(data.error || 'Error al actualizar la reserva');
+      }
+    } catch (error) {
+      console.error('Error al actualizar la reserva:', error);
+      alert('Error al actualizar la reserva');
+    }
+  };
+
+  const getEstadoColor = (estado: string) => {
+    switch (estado) {
+      case 'PENDIENTE':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'CONFIRMADA':
+        return 'bg-blue-100 text-blue-800';
+      case 'COMPLETADA':
+        return 'bg-green-100 text-green-800';
+      case 'CANCELADA':
+        return 'bg-red-100 text-red-800';
+      case 'RECHAZADA':
+        return 'bg-rose-100 text-rose-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getComprobanteColor = (estado?: EstadoComprobante) => {
+    switch (estado) {
+      case EstadoComprobante.PENDIENTE:
+        return 'bg-amber-100 text-amber-700';
+      case EstadoComprobante.APROBADO:
+        return 'bg-emerald-100 text-emerald-700';
+      case EstadoComprobante.RECHAZADO:
+        return 'bg-rose-100 text-rose-700';
+      default:
+        return 'bg-slate-100 text-slate-600';
+    }
+  };
+
+  const getComprobanteLabel = (estado?: EstadoComprobante) => {
+    switch (estado) {
+      case EstadoComprobante.PENDIENTE:
+        return 'Comprobante en revisión';
+      case EstadoComprobante.APROBADO:
+        return 'Comprobante aprobado';
+      case EstadoComprobante.RECHAZADO:
+        return 'Comprobante rechazado';
+      default:
+        return 'El cliente aún no ha subido el comprobante';
+    }
+  };
+
+  if (loading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-gray-500">Cargando...</p>
+      </div>
+    );
+  }
+
+  const isPhotographer = user.rol === 'FOTOGRAFO';
+
+  const canUploadComprobante = (reserva: Reserva) => {
+    if (isPhotographer) return false;
+    if (!reserva) return false;
+    if ([EstadoReserva.CANCELADA, EstadoReserva.COMPLETADA].includes(reserva.estado)) {
+      return false;
+    }
+    return reserva.comprobanteEstado !== EstadoComprobante.APROBADO;
+  };
+
+  const openUploadModal = (reserva: Reserva) => {
+    setActiveUploadReservation(reserva);
+    setProofFile(null);
+    setProofNotes(reserva.comprobanteNotas ?? '');
+  };
+
+  const closeUploadModal = () => {
+    setActiveUploadReservation(null);
+    setProofFile(null);
+    setProofNotes('');
+    setUploadingProof(false);
+  };
+
+  const handleUploadComprobante = async () => {
+    if (!activeUploadReservation) return;
+    const authToken = getAuthToken();
+    if (!authToken) {
+      setError('Sesión expirada, vuelve a iniciar sesión.');
+      return;
+    }
+
+    try {
+      setUploadingProof(true);
+      let proofUrl = activeUploadReservation.comprobanteUrl ?? '';
+
+      if (proofFile) {
+        const formData = new FormData();
+        formData.append('file', proofFile);
+        const uploadResponse = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        const uploadPayload = await uploadResponse.json();
+        if (!uploadResponse.ok || !uploadPayload?.url) {
+          throw new Error(uploadPayload?.error || 'No se pudo subir el archivo');
+        }
+        proofUrl = uploadPayload.url;
+      }
+
+      if (!proofUrl) {
+        throw new Error('Debes seleccionar una imagen del comprobante');
+      }
+
+      const response = await fetch(`/api/reservations/${activeUploadReservation.id}/comprobante`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ url: proofUrl, notas: proofNotes || undefined }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || 'No se pudo enviar el comprobante');
+      }
+
+      closeUploadModal();
+      fetchReservas();
+    } catch (submissionError) {
+      console.error('Error al enviar comprobante:', submissionError);
+      setError((submissionError as Error).message ?? 'No se pudo enviar el comprobante');
+    } finally {
+      setUploadingProof(false);
+    }
+  };
+
+  const openReviewModal = (
+    reserva: Reserva,
+    decision: Extract<EstadoComprobante, 'APROBADO' | 'RECHAZADO'>
+  ) => {
+    setReviewContext({ reserva, decision });
+    setReviewNotes('');
+  };
+
+  const closeReviewModal = () => {
+    setReviewContext({ reserva: null, decision: null });
+    setReviewNotes('');
+    setProcessingReview(false);
+  };
+
+  const handleReviewSubmit = async () => {
+    if (!reviewContext.reserva || !reviewContext.decision) return;
+    const authToken = getAuthToken();
+    if (!authToken) {
+      setError('Sesión expirada, vuelve a iniciar sesión.');
+      return;
+    }
+
+    try {
+      setProcessingReview(true);
+      const response = await fetch(
+        `/api/reservations/${reviewContext.reserva.id}/comprobante/review`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({
+            estado: reviewContext.decision,
+            notas: reviewNotes || undefined,
+          }),
+        }
+      );
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || 'No se pudo actualizar el comprobante');
+      }
+
+      closeReviewModal();
+      fetchReservas();
+    } catch (err) {
+      console.error('Error al revisar comprobante:', err);
+      setError((err as Error).message ?? 'No se pudo actualizar el comprobante');
+    } finally {
+      setProcessingReview(false);
+    }
+  };
+
+  // Handler para abrir modal de reseña (cliente califica fotógrafo)
+  const openReviewModalForClient = (reserva: Reserva) => {
+    setReviewReservation(reserva);
+    setShowReviewModal(true);
+  };
+
+  const closeReviewModalForClient = () => {
+    setReviewReservation(null);
+    setShowReviewModal(false);
+  };
+
+  const handleReviewSuccess = () => {
+    // Refrescar la lista de reservas para mostrar que ya tiene reseña
+    fetchReservas();
+    closeReviewModalForClient();
+  };
+
+  // === CANCELLATION HANDLERS ===
+  const openCancelModal = (reserva: Reserva) => {
+    setCancelReservation(reserva);
+    setCancelMotivo('');
+
+    // Calcular penalización
+    const fechaEvento = reserva.fechaEvento ? new Date(reserva.fechaEvento) : new Date();
+    const hoy = new Date();
+    const diasRestantes = Math.ceil((fechaEvento.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
+    const monto = Number(reserva.monto || 0);
+
+    let pen = 0;
+    if (diasRestantes < 2) pen = monto * 0.50;
+    else if (diasRestantes < 7) pen = monto * 0.30;
+    else if (diasRestantes < 14) pen = monto * 0.15;
+
+    setPenalizacion(pen);
+    setShowCancelModal(true);
+  };
+
+  const closeCancelModal = () => {
+    setShowCancelModal(false);
+    setCancelReservation(null);
+    setCancelMotivo('');
+    setPenalizacion(0);
+  };
+
+  const handleSubmitCancellation = async () => {
+    if (!cancelReservation || !cancelMotivo.trim() || cancelMotivo.trim().length < 10) {
+      alert('Debes proporcionar un motivo de al menos 10 caracteres');
+      return;
+    }
+
+    const authToken = getAuthToken();
+    if (!authToken) {
+      setError('Sesión expirada');
+      return;
+    }
+
+    try {
+      setSubmittingCancellation(true);
+      const response = await fetch(`/api/reservations/${cancelReservation.id}/request-cancellation`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ motivoCancelacion: cancelMotivo }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al solicitar cancelación');
+      }
+
+      alert('✅ Solicitud de cancelación enviada al fotógrafo');
+      closeCancelModal();
+      fetchReservas();
+    } catch (err) {
+      console.error('Error:', err);
+      alert((err as Error).message);
+    } finally {
+      setSubmittingCancellation(false);
+    }
+  };
+
+  // Determinar si se puede dejar reseña
+  const canLeaveReview = (reserva: Reserva) => {
+    if (isPhotographer) return false; // Solo clientes pueden dejar reseñas
+    if (reserva.estado !== EstadoReserva.COMPLETADA) return false; // Solo completadas
+    if (reserva.resena) return false; // Ya tiene reseña
+    return true;
+  };
+
+  const formatFecha = (reserva: Reserva) => {
+    const raw = reserva.fechaEvento ?? reserva.fecha ?? reserva.creadoEn;
+    return raw ? new Date(raw).toLocaleDateString('es-BO') : 'Por definir';
+  };
+
+  const formatHora = (reserva: Reserva) => {
+    if (reserva.horaInicio || reserva.horaFin) {
+      return `${reserva.horaInicio ?? reserva.horaFin}`;
+    }
+    if (reserva.horaEvento) {
+      return reserva.horaEvento;
+    }
+    return 'A coordinar';
+  };
+
+  const openChat = async (reserva: Reserva) => {
+    try {
+      const authToken = getAuthToken();
+      if (!authToken) return;
+
+      // Crear o recuperar conversación
+      const response = await fetch('/api/chat/conversations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ reservaId: reserva.id }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setActiveChatReservationId(data.data.id);
+
+        // Determinar el nombre del otro usuario
+        const otherName = isPhotographer
+          ? reserva.cliente?.nombreCompleto || 'Cliente'
+          : reserva.fotografo?.nombreCompleto || 'Fotógrafo';
+
+        setActiveChatUserName(otherName);
+        setShowChatModal(true);
+      } else {
+        console.error('Error opening chat');
+        alert('No se pudo abrir el chat');
+      }
+    } catch (error) {
+      console.error('Error opening chat:', error);
+      alert('Error al conectar con el chat');
+    }
+  };
+
+  // === EDIT RESERVATION HANDLERS ===
+  const openEditModal = (reserva: Reserva) => {
+    setEditReservation(reserva);
+    setEditDate(reserva.fechaEvento ? new Date(reserva.fechaEvento).toISOString().split('T')[0] : '');
+    setEditTime(reserva.horaEvento || '');
+    setEditLocation(reserva.ubicacionEvento || '');
+    setEditAmount(reserva.monto?.toString() || '');
+    setEditNotes(reserva.notas || '');
+    setShowEditModal(true);
+  };
+
+  const closeEditModal = () => {
+    setShowEditModal(false);
+    setEditReservation(null);
+    setEditDate('');
+    setEditTime('');
+    setEditLocation('');
+    setEditAmount('');
+    setEditNotes('');
+  };
+
+  const handleSubmitEdit = async () => {
+    if (!editReservation) return;
+
+    if (!editDate) {
+      alert('La fecha del evento es obligatoria');
+      return;
+    }
+
+    if (!editAmount || Number(editAmount) <= 0) {
+      alert('El monto debe ser mayor a 0');
+      return;
+    }
+
+    const authToken = getAuthToken();
+    if (!authToken) {
+      setError('Sesión expirada');
+      return;
+    }
+
+    try {
+      setSubmittingEdit(true);
+      const response = await fetch(`/api/reservations/${editReservation.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          fechaEvento: new Date(`${editDate}T00:00:00`),
+          horaEvento: editTime || undefined,
+          ubicacionEvento: editLocation || undefined,
+          monto: Number(editAmount),
+          notas: editNotes || undefined,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al actualizar la reserva');
+      }
+
+      alert('✅ Reserva actualizada exitosamente');
+      closeEditModal();
+      fetchReservas();
+    } catch (err) {
+      console.error('Error:', err);
+      alert((err as Error).message);
+    } finally {
+      setSubmittingEdit(false);
+    }
+  };
+
+  // === DELETE RESERVATION HANDLERS ===
+  const openDeleteModal = (reserva: Reserva) => {
+    setDeleteReservation(reserva);
+    setShowDeleteModal(true);
+  };
+
+  const closeDeleteModal = () => {
+    setShowDeleteModal(false);
+    setDeleteReservation(null);
+  };
+
+  const handleSubmitDelete = async () => {
+    if (!deleteReservation) return;
+
+    const authToken = getAuthToken();
+    if (!authToken) {
+      setError('Sesión expirada');
+      return;
+    }
+
+    try {
+      setSubmittingDelete(true);
+      const response = await fetch(`/api/reservations/${deleteReservation.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al eliminar la reserva');
+      }
+
+      alert('✅ Reserva eliminada exitosamente');
+      closeDeleteModal();
+      fetchReservas();
+    } catch (err) {
+      console.error('Error:', err);
+      alert((err as Error).message);
+    } finally {
+      setSubmittingDelete(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="container mx-auto px-4 max-w-6xl">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">
+            {isPhotographer ? 'Reservas Recibidas' : 'Mis Reservas'}
+          </h1>
+          <p className="text-gray-600 mt-2">
+            {isPhotographer
+              ? 'Gestiona las reservas de tus clientes'
+              : 'Revisa el estado de tus reservas'}
+          </p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-4 mb-8">
+          {[
+            { label: 'Totales', value: resumen.total },
+            { label: 'Pendientes', value: resumen.pendientes },
+            { label: 'Confirmadas', value: resumen.confirmadas },
+            { label: 'Completadas', value: resumen.completadas },
+          ].map((item) => (
+            <Card key={item.label} className="p-4">
+              <p className="text-sm text-gray-500">{item.label}</p>
+              <p className="text-2xl font-semibold text-gray-900">{item.value}</p>
+            </Card>
+          ))}
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3 mb-8">
+          {[{
+            label: 'Comprobantes enviados',
+            value: comprobanteStats.enviados,
+            helper: `${comprobanteStats.sinEnviar} por enviar`,
+          },
+          {
+            label: 'Por revisar',
+            value: comprobanteStats.pendientes,
+            helper: isPhotographer ? 'Revisa desde esta página' : 'Espera confirmación del fotógrafo',
+          },
+          {
+            label: 'Aprobados',
+            value: comprobanteStats.aprobados,
+            helper: `${comprobanteStats.rechazados} rechazados`,
+          }].map((item) => (
+            <Card key={item.label} className="p-4">
+              <p className="text-sm text-gray-500">{item.label}</p>
+              <p className="text-2xl font-semibold text-gray-900">{item.value}</p>
+              <p className="text-xs text-gray-500 mt-1">{item.helper}</p>
+            </Card>
+          ))}
+        </div>
+
+        {!isPhotographer && (
+          <Card className="mb-8 border-2 border-dashed border-blue-200 bg-white">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.4em] text-blue-600">Solicitud inmediata</p>
+                <h2 className="text-2xl font-semibold text-slate-900 mt-2">¿Listo para reservar a tu fotógrafo?</h2>
+                <p className="text-sm text-slate-500 mt-1">
+                  Completa una solicitud rápida para generar la cita y habilitar la subida de comprobantes.
+                </p>
+              </div>
+              <Button onClick={openSolicitudModal} className="w-full md:w-auto">
+                Crear solicitud / nueva reserva
+              </Button>
+            </div>
+          </Card>
+        )}
+
+        <div className="flex flex-wrap gap-2 mb-6">
+          {estadoOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => {
+                setStatusFilter(option.value);
+                fetchReservas(option.value);
+              }}
+              className={`px-4 py-2 rounded-full text-sm border ${statusFilter === option.value
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'border-slate-200 text-slate-600 hover:border-slate-400'
+                }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
+            {error}
+          </div>
+        )}
+
+        {loadingReservas ? (
+          <div className="text-center py-12">
+            <p className="text-gray-500">Cargando reservas...</p>
+          </div>
+        ) : reservas.length === 0 ? (
+          <Card className="text-center py-12">
+            <p className="text-gray-500 text-lg mb-4">
+              {isPhotographer
+                ? 'No has recibido reservas aún'
+                : 'No tienes reservas todavía'}
+            </p>
+            {!isPhotographer && (
+              <Button onClick={() => router.push('/fotografos')}>
+                Buscar Fotógrafos
+              </Button>
+            )}
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {reservas.map((reserva) => (
+              <Card key={reserva.id} className="p-6">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        {isPhotographer
+                          ? reserva.cliente?.nombreCompleto
+                          : reserva.fotografo?.nombreCompleto}
+                      </h3>
+                      <span
+                        className={`px-3 py-1 rounded-full text-sm font-medium ${getEstadoColor(
+                          reserva.estado
+                        )}`}
+                      >
+                        {reserva.estado}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1 text-sm text-gray-600">
+                      <p>
+                        <span className="font-medium">Paquete:</span>{' '}
+                        {reserva.paquete?.titulo || reserva.paquete?.nombre || 'Sesión reservada'}
+                      </p>
+                      <p>
+                        <span className="font-medium">Precio:</span>{' '}
+                        Bs{' '}
+                        {Number(reserva.paquete?.precio ?? reserva.monto ?? 0).toLocaleString('es-BO', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </p>
+                      <p>
+                        <span className="font-medium">Fecha:</span>{' '}
+                        {formatFecha(reserva)}
+                      </p>
+                      <p>
+                        <span className="font-medium">Horario:</span>{' '}
+                        {formatHora(reserva)}
+                      </p>
+                      <p>
+                        <span className="font-medium">
+                          {isPhotographer ? 'Cliente' : 'Fotógrafo'}:
+                        </span>{' '}
+                        {isPhotographer
+                          ? (reserva.cliente?.nombreCompleto || reserva.cliente?.email)
+                          : (reserva.fotografo?.perfilFotografo?.nombrePublico || reserva.fotografo?.nombreCompleto || reserva.fotografo?.email)}
+                      </p>
+                    </div>
+
+                    <div className="mt-4 border-t border-slate-100 pt-4 space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-semibold ${getComprobanteColor(
+                            reserva.comprobanteEstado
+                          )}`}
+                        >
+                          {getComprobanteLabel(reserva.comprobanteEstado)}
+                        </span>
+                        {reserva.comprobanteUrl && (
+                          <a
+                            href={reserva.comprobanteUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs font-medium text-blue-600 hover:underline"
+                          >
+                            Ver comprobante
+                          </a>
+                        )}
+                      </div>
+
+                      {reserva.comprobanteNotas && (
+                        <p className="text-xs text-slate-500">
+                          Nota: {reserva.comprobanteNotas}
+                        </p>
+                      )}
+
+                      {!isPhotographer && reserva.fotografo?.perfilFotografo?.qrPagoUrl && (
+                        <a
+                          href={reserva.fotografo.perfilFotografo.qrPagoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-2 text-xs text-slate-500 hover:text-slate-700"
+                        >
+                          ð² Ver QR / datos de pago
+                        </a>
+                      )}
+
+                      {!isPhotographer && reserva.fotografo?.perfilFotografo?.qrInstrucciones && (
+                        <p className="text-xs text-slate-500 whitespace-pre-line bg-slate-50 border border-slate-100 rounded-2xl p-3">
+                          {reserva.fotografo.perfilFotografo.qrInstrucciones}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 md:ml-4">
+                    {!isPhotographer && canUploadComprobante(reserva) && (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => openUploadModal(reserva)}
+                      >
+                        {reserva.comprobanteEstado === EstadoComprobante.PENDIENTE
+                          ? 'Actualizar comprobante'
+                          : reserva.comprobanteEstado === EstadoComprobante.RECHAZADO
+                            ? 'Reenviar comprobante'
+                            : 'Subir comprobante'}
+                      </Button>
+                    )}
+
+                    {isPhotographer && reserva.comprobanteEstado === EstadoComprobante.PENDIENTE && (
+                      <>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => openReviewModal(reserva, EstadoComprobante.APROBADO)}
+                        >
+                          Aprobar comprobante
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => openReviewModal(reserva, EstadoComprobante.RECHAZADO)}
+                        >
+                          Rechazar comprobante
+                        </Button>
+                      </>
+                    )}
+
+                    {isPhotographer && reserva.estado === EstadoReserva.PENDIENTE && (
+                      <>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() =>
+                            handleCambiarEstado(reserva.id, EstadoReserva.CONFIRMADA)
+                          }
+                        >
+                          ✓ Confirmar
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() =>
+                            handleCambiarEstado(reserva.id, EstadoReserva.CANCELADA)
+                          }
+                        >
+                          ✗ Cancelar
+                        </Button>
+                      </>
+                    )}
+
+                    {isPhotographer && reserva.estado === EstadoReserva.CONFIRMADA && (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() =>
+                          handleCambiarEstado(reserva.id, EstadoReserva.COMPLETADA)
+                        }
+                      >
+                        ✓ Completar
+                      </Button>
+                    )}
+
+                    {/* Botón para dejar reseña (solo clientes, reservas completadas sin reseña) */}
+                    {canLeaveReview(reserva) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openReviewModalForClient(reserva)}
+                        className="border-yellow-400 text-yellow-600 hover:bg-yellow-50"
+                      >
+                        ⭐ Dejar Reseña
+                      </Button>
+                    )}
+
+                    {/* Mostrar si ya tiene reseña */}
+                    {!isPhotographer && reserva.resena && (
+                      <div className="text-xs text-green-600 font-semibold flex items-center gap-1">
+                        ✓ Reseña publicada
+                      </div>
+                    )}
+
+                    {!isPhotographer && reserva.estado === EstadoReserva.PENDIENTE && (
+                      <>
+                        {/* Botón de Editar */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openEditModal(reserva)}
+                          className="border-blue-300 text-blue-600 hover:bg-blue-50"
+                        >
+                          ✏️ Editar
+                        </Button>
+                        
+                        {/* Botón de Eliminar */}
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => openDeleteModal(reserva)}
+                        >
+                          🗑️ Eliminar
+                        </Button>
+                      </>
+                    )}
+
+                    {/* Botón de Chat */}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => openChat(reserva)}
+                      className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border-indigo-200"
+                    >
+                      💬 Chat
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Modals */}
+        {!isPhotographer && (
+          <Modal
+            isOpen={showSolicitudModal}
+            onClose={closeSolicitudModal}
+            title="Crear solicitud / nueva reserva"
+          >
+            <div className="space-y-4">
+              {solicitudError && (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+                  {solicitudError}
+                </div>
+              )}
+
+              {solicitudPhotographer && (
+                <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-slate-600">
+                  <p className="font-semibold text-blue-900 text-lg">
+                    {solicitudPhotographer.nombrePublico || solicitudPhotographer.usuario?.nombreCompleto}
+                  </p>
+                  <p className="mt-1 text-blue-800">
+                    Ubicación: {solicitudPhotographer.ubicacion || 'Por confirmar'}
+                  </p>
+                  {solicitudPhotographer.categorias && solicitudPhotographer.categorias.length > 0 && (
+                    <p className="mt-1 text-blue-700">
+                      Categorías: {solicitudPhotographer.categorias.map((cat) => cat.categoria?.nombre).filter(Boolean).join(', ')}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="text-sm font-medium text-slate-700">ID del fotógrafo</label>
+                  <input
+                    type="number"
+                    value={selectedPhotographerId ?? ''}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (!value) {
+                        setSelectedPhotographerId(null);
+                        return;
+                      }
+                      const parsed = Number(value);
+                      setSelectedPhotographerId(Number.isNaN(parsed) ? null : parsed);
+                    }}
+                    placeholder="Ej. 42"
+                    className="mt-2 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">Lo encuentras en la URL pública del portafolio (/perfil/ID).</p>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Paquete</label>
+                  {solicitudPackages.length > 0 ? (
+                    <select
+                      value={selectedPackageId ?? ''}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (!value) {
+                          setSelectedPackageId(null);
+                          return;
+                        }
+                        const parsed = Number(value);
+                        setSelectedPackageId(parsed);
+                        const pkg = solicitudPackages.find((item) => item.id === parsed);
+                        if (pkg?.precio) {
+                          setSolicitudAmount(pkg.precio.toString());
+                        }
+                      }}
+                      className="mt-2 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {solicitudPackages.map((pack) => (
+                        <option key={pack.id} value={pack.id}>
+                          {pack.titulo || pack.nombre || `Paquete ${pack.id}`} · Bs {Number(pack.precio).toLocaleString('es-BO')}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="mt-2 text-sm text-slate-500">El fotógrafo aún no publicó paquetes. Describe tus necesidades en las notas.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Fecha del evento</label>
+                  <input
+                    type="date"
+                    value={solicitudDate}
+                    min={new Date().toISOString().split('T')[0]}
+                    onChange={(event) => {
+                      const selectedDate = event.target.value;
+                      if (fechasOcupadas.includes(selectedDate)) {
+                        setSolicitudError(`La fecha ${selectedDate} no está disponible. Por favor elige otra.`);
+                        setSolicitudDate('');
+                      } else {
+                        setSolicitudError(null);
+                        setSolicitudDate(selectedDate);
+                      }
+                    }}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {fechasOcupadas.length > 0 && (
+                    <div className="mt-2 p-2 bg-amber-50 rounded-lg border border-amber-100">
+                      <p className="text-xs font-medium text-amber-800 mb-1">Fechas no disponibles:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {fechasOcupadas.slice(0, 5).map(fecha => (
+                          <span key={fecha} className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+                            {new Date(fecha).toLocaleDateString()}
+                          </span>
+                        ))}
+                        {fechasOcupadas.length > 5 && (
+                          <span className="text-[10px] text-amber-600 px-1.5 py-0.5">
+                            +{fechasOcupadas.length - 5} más
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Hora (opcional)</label>
+                  <input
+                    type="time"
+                    value={solicitudTime}
+                    onChange={(event) => setSolicitudTime(event.target.value)}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Ubicación / ciudad</label>
+                  <input
+                    type="text"
+                    value={solicitudLocation}
+                    onChange={(event) => setSolicitudLocation(event.target.value)}
+                    placeholder="Ej. Santa Cruz - Hotel Los Tajibos"
+                    className="mt-2 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Presupuesto estimado (Bs)</label>
+                  <input
+                    type="number"
+                    value={solicitudAmount}
+                    onChange={(event) => setSolicitudAmount(event.target.value)}
+                    min="0"
+                    placeholder="Ej. 1500"
+                    className="mt-2 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-slate-700">Notas y referencias</label>
+                <textarea
+                  value={solicitudNotes}
+                  onChange={(event) => setSolicitudNotes(event.target.value)}
+                  rows={4}
+                  placeholder="Cuéntanos sobre el evento, moodboard o requerimientos especiales."
+                  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={closeSolicitudModal} disabled={solicitudSubmitting}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleSolicitudSubmit} disabled={solicitudSubmitting || !selectedPhotographerId}>
+                  {solicitudSubmitting ? 'Creando…' : 'Guardar solicitud'}
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {activeUploadReservation && (
+          <Modal
+            isOpen={Boolean(activeUploadReservation)}
+            onClose={closeUploadModal}
+            title="Enviar comprobante"
+          >
+            <div className="space-y-4">
+              <p className="text-sm text-slate-600">
+                Adjunta la imagen o captura del comprobante de pago. Tu fotógrafo recibirá una notificación y podrá aprobarlo o dejarte comentarios.
+              </p>
+
+              {activeUploadReservation.estado === EstadoReserva.CONFIRMADA && activeUploadReservation.fotografo?.perfilFotografo?.qrPagoUrl && (
+                <div className="bg-blue-50 border-2 border-blue-200 rounded-2xl p-4 text-center">
+                  <p className="text-sm font-semibold text-blue-900 mb-3">Código QR para pago</p>
+                  <div className="bg-white rounded-xl p-3 inline-block shadow-sm relative w-48 h-48">
+                    <Image
+                      src={activeUploadReservation.fotografo.perfilFotografo.qrPagoUrl}
+                      alt="QR de pago"
+                      fill
+                      className="object-contain"
+                      unoptimized
+                    />
+                  </div>
+                  {activeUploadReservation.fotografo?.perfilFotografo?.qrInstrucciones && (
+                    <div className="mt-3 text-xs text-blue-800 bg-blue-100 rounded-xl p-3 text-left">
+                      <p className="font-semibold mb-1">Instrucciones de pago:</p>
+                      <p className="whitespace-pre-line">
+                        {activeUploadReservation.fotografo.perfilFotografo.qrInstrucciones}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeUploadReservation.estado === EstadoReserva.PENDIENTE && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-sm text-amber-800">
+                  <p className="font-semibold mb-1"> Reserva pendiente de confirmación</p>
+                  <p>El fotógrafo debe confirmar tu reserva antes de que puedas realizar el pago.</p>
+                </div>
+              )}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Archivo del comprobante</label>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={(event) => setProofFile(event.target.files?.[0] ?? null)}
+                  className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-600 hover:file:bg-blue-100"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-slate-700">Notas para el fotógrafo (opcional)</label>
+                <textarea
+                  value={proofNotes}
+                  onChange={(event) => setProofNotes(event.target.value)}
+                  rows={4}
+                  className="w-full mt-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej. Transferencia realizada desde Banco Unión, titular Juan Pérez."
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={closeUploadModal}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleUploadComprobante} disabled={uploadingProof}>
+                  {uploadingProof ? 'Enviando...' : 'Enviar comprobante'}
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {reviewContext.reserva && reviewContext.decision && (
+          <Modal
+            isOpen={Boolean(reviewContext.reserva)}
+            onClose={closeReviewModal}
+            title={
+              reviewContext.decision === EstadoComprobante.APROBADO
+                ? 'Aprobar comprobante'
+                : 'Rechazar comprobante'
+            }
+          >
+            <div className="space-y-4">
+              <p className="text-sm text-slate-600">
+                {reviewContext.decision === EstadoComprobante.APROBADO
+                  ? 'Estás a punto de aprobar este comprobante. El cliente será notificado.'
+                  : 'Estás a punto de rechazar este comprobante. El cliente deberá subir uno nuevo.'}
+              </p>
+
+              <div>
+                <label className="text-sm font-medium text-slate-700">Notas (opcional)</label>
+                <textarea
+                  value={reviewNotes}
+                  onChange={(event) => setReviewNotes(event.target.value)}
+                  rows={3}
+                  className="w-full mt-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Agrega un comentario para el cliente..."
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={closeReviewModal}>
+                  Cancelar
+                </Button>
+                <Button
+                  variant={reviewContext.decision === EstadoComprobante.APROBADO ? 'primary' : 'danger'}
+                  onClick={handleReviewSubmit}
+                  disabled={processingReview}
+                >
+                  {processingReview ? 'Procesando...' : 'Confirmar'}
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* Chat Modal */}
+        {showChatModal && activeChatReservationId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="w-full max-w-md">
+              <ChatWindow
+                conversacionId={activeChatReservationId}
+                otherUserName={activeChatUserName}
+                onClose={() => {
+                  setShowChatModal(false);
+                  setActiveChatReservationId(null);
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Editar Reserva */}
+        {showEditModal && editReservation && (
+          <Modal
+            isOpen={showEditModal}
+            onClose={closeEditModal}
+            title="Editar Reserva"
+          >
+            <div className="space-y-4">
+              <p className="text-sm text-slate-600">
+                Actualiza los detalles de tu reserva. Solo puedes editar reservas en estado PENDIENTE.
+              </p>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Fecha del evento *</label>
+                  <input
+                    type="date"
+                    value={editDate}
+                    min={new Date().toISOString().split('T')[0]}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Hora (opcional)</label>
+                  <input
+                    type="time"
+                    value={editTime}
+                    onChange={(e) => setEditTime(e.target.value)}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Ubicación</label>
+                  <input
+                    type="text"
+                    value={editLocation}
+                    onChange={(e) => setEditLocation(e.target.value)}
+                    placeholder="Ej. Santa Cruz - Hotel Los Tajibos"
+                    className="mt-2 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Monto (Bs) *</label>
+                  <input
+                    type="number"
+                    value={editAmount}
+                    onChange={(e) => setEditAmount(e.target.value)}
+                    min="0"
+                    placeholder="Ej. 1500"
+                    className="mt-2 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-slate-700">Notas</label>
+                <textarea
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  rows={4}
+                  placeholder="Agrega notas o detalles adicionales..."
+                  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={closeEditModal} disabled={submittingEdit}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleSubmitEdit} disabled={submittingEdit}>
+                  {submittingEdit ? 'Guardando...' : 'Guardar cambios'}
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* Modal de Eliminar Reserva */}
+        {showDeleteModal && deleteReservation && (
+          <Modal
+            isOpen={showDeleteModal}
+            onClose={closeDeleteModal}
+            title="Eliminar Reserva"
+          >
+            <div className="space-y-4">
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+                <p className="text-sm font-semibold text-red-900 mb-2">⚠️ Advertencia</p>
+                <p className="text-sm text-red-700">
+                  Estás a punto de eliminar la reserva permanentemente. Esta acción no se puede deshacer.
+                </p>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                <p className="text-sm font-semibold text-slate-900 mb-2">Detalles de la reserva:</p>
+                <div className="space-y-1 text-sm text-slate-600">
+                  <p><span className="font-medium">Fotógrafo:</span> {deleteReservation.fotografo?.nombreCompleto}</p>
+                  <p><span className="font-medium">Fecha:</span> {formatFecha(deleteReservation)}</p>
+                  <p><span className="font-medium">Monto:</span> Bs {Number(deleteReservation.monto || 0).toLocaleString('es-BO')}</p>
+                </div>
+              </div>
+
+              <p className="text-sm text-slate-600">
+                Solo puedes eliminar reservas en estado PENDIENTE. Si la reserva ya fue confirmada, 
+                debes solicitar una cancelación al fotógrafo.
+              </p>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={closeDeleteModal} disabled={submittingDelete}>
+                  Cancelar
+                </Button>
+                <Button 
+                  variant="danger" 
+                  onClick={handleSubmitDelete} 
+                  disabled={submittingDelete}
+                >
+                  {submittingDelete ? 'Eliminando...' : 'Sí, eliminar reserva'}
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* Modal de Reseña para Clientes */}
+        {showReviewModal && reviewReservation && (
+          <ReviewModal
+            isOpen={showReviewModal}
+            onClose={closeReviewModalForClient}
+            reservaId={reviewReservation.id}
+            fotografoNombre={reviewReservation.fotografo?.nombreCompleto || 'Fotógrafo'}
+            onSuccess={handleReviewSuccess}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function MisReservasPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><p className="text-gray-500">Cargando...</p></div>}>
+      <MisReservasContent />
+    </Suspense>
+  );
+}

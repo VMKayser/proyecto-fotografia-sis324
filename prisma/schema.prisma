@@ -1,0 +1,523 @@
+// ============================================
+// PRISMA SCHEMA - PROYECTO FOTOGRAFÍA SIS324
+// Base de datos principal: MySQL
+// Arquitectura: Layered Architecture (3 capas)
+// ============================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider          = "mysql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+// ============================================
+// ENUMERACIONES
+// ============================================
+
+enum RolUsuario {
+  CLIENTE
+  FOTOGRAFO
+  ADMIN
+}
+
+enum EstadoReserva {
+  PENDIENTE
+  CONFIRMADA
+  CANCELADA
+  COMPLETADA
+  RECHAZADA
+}
+
+enum Moneda {
+  BOB // Bolivianos
+  USD // Dólares
+}
+
+enum EstadoComprobante {
+  NO_ENVIADO
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+}
+
+enum TipoSolicitud {
+  EDICION
+  CANCELACION
+}
+
+enum EstadoSolicitud {
+  PENDIENTE
+  APROBADA
+  RECHAZADA
+}
+
+// ============================================
+// ENTIDAD: USUARIO
+// Representa a todos los usuarios del sistema
+// Roles: Cliente, Fotógrafo, Admin
+// ============================================
+model Usuario {
+  id              Int        @id @default(autoincrement())
+  nombre          String?    @db.VarChar(100) // nombre corto/usuario
+  nombreCompleto  String     @map("nombre_completo") @db.VarChar(255)
+  email           String     @unique @db.VarChar(255)
+  passwordHash    String     @map("password_hash") @db.VarChar(255)
+  passwordSalt    String?    @map("password_salt") @db.VarChar(255) // Para compatibilidad con Apps Script
+  rol             RolUsuario @default(CLIENTE)
+  telefono        String?    @db.VarChar(20)
+  activo          Boolean    @default(true)
+  emailVerificado Boolean    @default(false) @map("email_verificado")
+  cancelacionesTotales Int    @default(0) @map("cancelaciones_totales")
+  suspendidoHasta DateTime?  @map("suspendido_hasta")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  // Relaciones
+  perfilFotografo             PerfilFotografo?
+  reservasComoCliente         Reserva[]        @relation("ClienteReservas")
+  reservasComoFotografo       Reserva[]        @relation("FotografoReservas")
+  sesiones                    Sesion[]
+  conversacionesComoCliente   Conversacion[]   @relation("ClienteConversaciones")
+  conversacionesComoFotografo Conversacion[]   @relation("FotografoConversaciones")
+
+  mensajesEnviados            Mensaje[]        @relation("MensajesEnviados")
+  notificaciones              Notificacion[]
+
+  @@index([email])
+  @@index([rol])
+  @@map("usuarios")
+}
+
+// ============================================
+// ENTIDAD: SESIÓN
+// Almacena tokens JWT activos en MySQL
+// ============================================
+model Sesion {
+  id        Int      @id @default(autoincrement())
+  usuarioId Int      @map("usuario_id")
+  token     String   @unique @db.VarChar(500)
+  ipAddress String?  @map("ip_address") @db.VarChar(45)
+  userAgent String?  @map("user_agent") @db.VarChar(500)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relaciones
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("sesiones")
+}
+
+// ============================================
+// ENTIDAD: PERFIL FOTÓGRAFO
+// Información extendida para usuarios fotógrafos
+// ============================================
+model PerfilFotografo {
+  id                    Int       @id @default(autoincrement())
+  usuarioId             Int       @unique @map("usuario_id")
+  nombrePublico         String?   @map("nombre_publico") @db.VarChar(255)
+  biografia             String?   @db.Text
+  ubicacion             String?   @db.VarChar(255)
+  sitioWeb              String?   @map("sitio_web") @db.VarChar(500)
+  urlFotoPerfil         String?   @map("url_foto_perfil") @db.VarChar(500)
+  urlFotoPortada        String?   @map("url_foto_portada") @db.VarChar(500)
+  urlDocumentoIdentidad String?   @map("url_documento_identidad") @db.VarChar(500)
+  qrPagoUrl             String?   @map("qr_pago_url") @db.VarChar(500)
+  qrInstrucciones       String?   @map("qr_instrucciones") @db.Text
+  portfolio             String?   @db.Text // JSON array de URLs de imágenes
+  calificacionPromedio  Decimal?  @default(0) @map("calificacion_promedio") @db.Decimal(3, 2)
+  totalResenas          Int       @default(0) @map("total_resenas")
+  verificado            Boolean   @default(false)
+  destacadoHasta        DateTime? @map("destacado_hasta")
+  politicaCancelacion   String?   @map("politica_cancelacion") @db.Text
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  // Relaciones
+  usuario              Usuario              @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  categorias           FotografoCategoria[]
+  paquetes             Paquete[]
+  portafolio           PortafolioImagen[]
+  albums               PortafolioAlbum[]
+  bloqueos             BloqueoCalendario[]
+  solicitudesDestacado SolicitudDestacado[]
+
+  @@index([usuarioId])
+  @@index([ubicacion])
+  @@index([destacadoHasta])
+  @@map("perfiles_fotografos")
+}
+
+// ============================================
+// ENTIDAD: BLOQUEO CALENDARIO
+// Fechas no disponibles para el fotógrafo
+// ============================================
+model BloqueoCalendario {
+  id          Int      @id @default(autoincrement())
+  fotografoId Int      @map("fotografo_id")
+  fechaInicio DateTime @map("fecha_inicio") @db.Date
+  fechaFin    DateTime @map("fecha_fin") @db.Date
+  motivo      String?  @db.VarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relaciones
+  fotografo PerfilFotografo @relation(fields: [fotografoId], references: [id], onDelete: Cascade)
+
+  @@index([fotografoId])
+  @@index([fechaInicio])
+  @@index([fechaFin])
+  @@map("bloqueos_calendario")
+}
+
+// ============================================
+// ENTIDAD: SOLICITUD DESTACADO
+// Solicitudes de fotógrafos para destacar su perfil
+// ============================================
+model SolicitudDestacado {
+  id             Int               @id @default(autoincrement())
+  fotografoId    Int               @map("fotografo_id")
+  dias           Int // 7, 30, 90
+  precio         Decimal           @db.Decimal(10, 2)
+  urlComprobante String            @map("url_comprobante") @db.VarChar(500)
+  referenciaPago String?           @map("referencia_pago") @db.VarChar(100)
+  notasFotografo String?           @map("notas_fotografo") @db.Text
+  estado         EstadoComprobante @default(PENDIENTE)
+  notasAdmin     String?           @map("notas_admin") @db.Text
+  revisadoPor    Int?              @map("revisado_por")
+  fechaRevision  DateTime?         @map("fecha_revision")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  // Relaciones
+  fotografo PerfilFotografo @relation(fields: [fotografoId], references: [id], onDelete: Cascade)
+
+  @@index([fotografoId])
+  @@index([estado])
+  @@index([createdAt])
+  @@map("solicitudes_destacado")
+}
+
+// ============================================
+// ENTIDAD: CONFIGURACIÓN SISTEMA
+// Configuración general del sistema (QR pago, etc.)
+// ============================================
+model ConfiguracionSistema {
+  id          Int      @id @default(autoincrement())
+  clave       String   @unique @db.VarChar(100)
+  valor       String?  @db.Text
+  descripcion String?  @db.Text
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("configuracion_sistema")
+}
+
+// ============================================
+// ENTIDAD: CATEGORÍA
+// Categorías de servicios fotográficos
+// Tipos: Bodas, Eventos Corporativos, Familia, etc.
+// ============================================
+model Categoria {
+  id          Int      @id @default(autoincrement())
+  nombre      String   @unique @db.VarChar(100)
+  tipo        String?  @db.VarChar(100) // "Tipo de Evento", "Estilo Fotográfico", etc.
+  descripcion String?  @db.Text
+  icono       String?  @db.VarChar(50)
+  activo      Boolean  @default(true)
+  orden       Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  fotografos FotografoCategoria[]
+
+  @@index([nombre])
+  @@index([tipo])
+  @@map("categorias")
+}
+
+// ============================================
+// ENTIDAD: FOTÓGRAFO-CATEGORÍA (Tabla Pivot)
+// Relación muchos a muchos entre fotógrafos y categorías
+// ============================================
+model FotografoCategoria {
+  id          Int      @id @default(autoincrement())
+  fotografoId Int      @map("fotografo_id")
+  categoriaId Int      @map("categoria_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relaciones
+  fotografo PerfilFotografo @relation(fields: [fotografoId], references: [id], onDelete: Cascade)
+  categoria Categoria       @relation(fields: [categoriaId], references: [id], onDelete: Cascade)
+
+  @@unique([fotografoId, categoriaId])
+  @@index([fotografoId])
+  @@index([categoriaId])
+  @@map("fotografo_categorias")
+}
+
+// ============================================
+// ENTIDAD: PAQUETE (Servicios Fotográficos)
+// Paquetes de servicios que ofrece cada fotógrafo
+// ============================================
+model Paquete {
+  id            Int      @id @default(autoincrement())
+  fotografoId   Int      @map("fotografo_id")
+  titulo        String   @db.VarChar(255)
+  descripcion   String?  @db.Text
+  precio        Decimal  @db.Decimal(10, 2)
+  moneda        Moneda   @default(BOB)
+  duracionHoras String?  @map("duracion_horas") @db.VarChar(50)
+  incluye       String?  @db.Text // Lista de lo que incluye
+  imagenUrl     String?  @map("imagen_url") @db.VarChar(500)
+  activo        Boolean  @default(true)
+  destacado     Boolean  @default(false)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  fotografo PerfilFotografo @relation(fields: [fotografoId], references: [id], onDelete: Cascade)
+  reservas  Reserva[]
+
+  @@index([fotografoId])
+  @@index([activo])
+  @@map("paquetes_servicios")
+}
+
+// ============================================
+// ENTIDAD: PORTAFOLIO ÁLBUM
+// Conjuntos curados de imágenes por proyecto/tema
+// ============================================
+model PortafolioAlbum {
+  id          Int      @id @default(autoincrement())
+  fotografoId Int      @map("fotografo_id")
+  nombre      String   @db.VarChar(120)
+  slug        String   @db.VarChar(160)
+  descripcion String?  @db.VarChar(500)
+  portadaUrl  String?  @map("portada_url") @db.VarChar(500)
+  orden       Int      @default(0)
+  visible     Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  fotografo PerfilFotografo    @relation(fields: [fotografoId], references: [id], onDelete: Cascade)
+  imagenes  PortafolioImagen[]
+
+  @@unique([fotografoId, nombre])
+  @@unique([fotografoId, slug])
+  @@index([fotografoId])
+  @@index([slug])
+  @@index([visible])
+  @@map("portafolio_albums")
+}
+
+// ============================================
+// ENTIDAD: PORTAFOLIO IMAGEN
+// Imágenes del portafolio de cada fotógrafo
+// ============================================
+model PortafolioImagen {
+  id          Int      @id @default(autoincrement())
+  fotografoId Int      @map("fotografo_id")
+  urlImagen   String   @map("url_imagen") @db.VarChar(500)
+  descripcion String?  @db.VarChar(500)
+  orden       Int      @default(0)
+  destacada   Boolean  @default(false)
+  album       String?  @db.VarChar(100)
+  albumId     Int?     @map("album_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  fotografo PerfilFotografo  @relation(fields: [fotografoId], references: [id], onDelete: Cascade)
+  albumRef  PortafolioAlbum? @relation(fields: [albumId], references: [id], onDelete: SetNull)
+
+  @@index([fotografoId])
+  @@index([destacada])
+  @@index([album])
+  @@index([albumId])
+  @@map("portafolio_imagenes")
+}
+
+// ============================================
+// ENTIDAD: RESERVA
+// Reservas de servicios fotográficos
+// ============================================
+model Reserva {
+  id                Int               @id @default(autoincrement())
+  clienteId         Int               @map("cliente_id")
+  fotografoId       Int               @map("fotografo_id")
+  paqueteId         Int?              @map("paquete_id")
+  fechaEvento       DateTime          @map("fecha_evento") @db.Date
+  horaEvento        String?           @map("hora_evento") @db.VarChar(20)
+  ubicacionEvento   String?           @map("ubicacion_evento") @db.VarChar(500)
+  estado            EstadoReserva     @default(PENDIENTE)
+  monto             Decimal           @db.Decimal(10, 2)
+  comision          Decimal           @default(0) @db.Decimal(10, 2)
+  moneda            Moneda            @default(BOB)
+  notas             String?           @db.Text
+  comprobanteEstado EstadoComprobante @default(NO_ENVIADO) @map("comprobante_estado")
+  comprobanteUrl    String?           @map("comprobante_url") @db.VarChar(500)
+  comprobanteNotas  String?           @map("comprobante_notas") @db.Text
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  // Relaciones
+  cliente      Usuario       @relation("ClienteReservas", fields: [clienteId], references: [id], onDelete: Restrict)
+  fotografo    Usuario       @relation("FotografoReservas", fields: [fotografoId], references: [id], onDelete: Restrict)
+  paquete      Paquete?      @relation(fields: [paqueteId], references: [id], onDelete: SetNull)
+  resena        Resena?
+  conversaciones Conversacion[]
+  solicitudesCambio SolicitudCambio[]
+
+  @@index([clienteId])
+  @@index([fotografoId])
+  @@index([paqueteId])
+  @@index([estado])
+  @@index([fechaEvento])
+  @@map("reservas")
+}
+
+// ============================================
+// ENTIDAD: SOLICITUD CAMBIO
+// Solicitudes de edición y cancelación de reservas
+// ============================================
+model SolicitudCambio {
+  id          Int             @id @default(autoincrement())
+  reservaId   Int             @map("reserva_id")
+  tipo        TipoSolicitud
+  estado      EstadoSolicitud @default(PENDIENTE)
+  
+  // Datos originales (para referencia JSON)
+  datosOriginales Json?        @map("datos_originales")
+  
+  // Cambios solicitados (para EDICION)
+  nuevaFecha     DateTime?     @map("nueva_fecha") @db.Date
+  nuevaHora      String?       @map("nueva_hora") @db.VarChar(20)
+  nuevaUbicacion String?       @map("nueva_ubicacion") @db.VarChar(500)
+  motivoEdicion  String?       @map("motivo_edicion") @db.Text
+  
+  // Para CANCELACION
+  motivoCancelacion String?    @map("motivo_cancelacion") @db.Text
+  penalizacion      Decimal    @default(0) @map("penalizacion") @db.Decimal(10, 2)
+  
+  // Respuesta del fotógrafo
+  respuestaFotografo String?   @map("respuesta_fotografo") @db.Text
+  fechaRespuesta     DateTime?  @map("fecha_respuesta")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  // Relaciones
+  reserva Reserva @relation(fields: [reservaId], references: [id], onDelete: Cascade)
+  
+  @@index([reservaId])
+  @@index([estado])
+  @@index([tipo])
+  @@map("solicitudes_cambio")
+}
+
+// ============================================
+// ENTIDAD: RESEÑA
+// Reseñas y calificaciones de servicios
+// ============================================
+model Resena {
+  id           Int      @id @default(autoincrement())
+  reservaId    Int      @unique @map("reserva_id")
+  calificacion Int      @db.TinyInt // 1-5 estrellas
+  comentario   String?  @db.Text
+  publicadoPor String?  @map("publicado_por") @db.VarChar(255) // Nombre del cliente
+  respuesta    String?  @db.Text // Respuesta del fotógrafo
+  visible      Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  reserva Reserva @relation(fields: [reservaId], references: [id], onDelete: Cascade)
+
+  @@index([reservaId])
+  @@index([calificacion])
+  @@index([visible])
+  @@map("resenas")
+}
+
+// ============================================
+// ENTIDAD: CONVERSACI�N
+// Hilos de chat entre cliente y fot�grafo
+// ============================================
+model Conversacion {
+  id          Int      @id @default(autoincrement())
+  reservaId   Int?     @map("reserva_id") // Ahora opcional para permitir chat sin reserva
+  clienteId   Int      @map("cliente_id")
+  fotografoId Int      @map("fotografo_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  reserva   Reserva?  @relation(fields: [reservaId], references: [id], onDelete: SetNull)
+  cliente   Usuario   @relation("ClienteConversaciones", fields: [clienteId], references: [id], onDelete: Cascade)
+  fotografo Usuario   @relation("FotografoConversaciones", fields: [fotografoId], references: [id], onDelete: Cascade)
+  mensajes  Mensaje[]
+
+  @@unique([clienteId, fotografoId])
+  @@index([clienteId])
+  @@index([fotografoId])
+  @@index([reservaId])
+  @@map("conversaciones")
+}
+
+// ============================================
+// ENTIDAD: MENSAJE
+// Mensajes individuales dentro de una conversaci�n
+// ============================================
+model Mensaje {
+  id             Int      @id @default(autoincrement())
+  conversacionId Int      @map("conversacion_id")
+  remitenteId    Int      @map("remitente_id")
+  contenido      String   @db.Text
+  leido          Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  // Relaciones
+  conversacion Conversacion @relation(fields: [conversacionId], references: [id], onDelete: Cascade)
+  remitente    Usuario      @relation("MensajesEnviados", fields: [remitenteId], references: [id], onDelete: Cascade)
+
+  @@index([conversacionId])
+  @@index([remitenteId])
+  @@index([createdAt])
+  @@map("mensajes")
+}
+
+// ============================================
+// ENTIDAD: NOTIFICACIÓN
+// Alertas para usuarios
+// ============================================
+enum TipoNotificacion {
+  RESERVA
+  MENSAJE
+  SISTEMA
+  PAGO
+}
+
+model Notificacion {
+  id        Int              @id @default(autoincrement())
+  usuarioId Int              @map("usuario_id")
+  tipo      TipoNotificacion
+  titulo    String           @db.VarChar(100)
+  mensaje   String           @db.Text
+  leido     Boolean          @default(false)
+  enlace    String?          @db.VarChar(255)
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  // Relaciones
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@index([leido])
+  @@map("notificaciones")
+}

@@ -1,0 +1,5 @@
+{}"?H&|U# Ignore legacy static frontend bundle (handled outside Next.js)
+src/frontend/**
+
+# Documentation and generated artifacts
+docs/**

@@ -1,0 +1,24 @@
+Failed to compile.
+
+./src/app/mis-reservas/page.tsx
+Error: 
+  [31mx[0m Expression expected
+     ,-[[36;1;4m/media/kayser/7EF687B8F6876EE933/UNIVERSIDAD/Sexto Semestre/Sis324-Ingenieria de Software/tercera entrega /proyecto_fotografia/src/app/mis-reservas/page.tsx[0m:345:1]
+ [2m345[0m |   <div className="min-h-screen flex items-center justify-center">
+ [2m346[0m |     <p className="text-gray-500">Cargando...</p>
+ [2m347[0m |   </div>
+ [2m348[0m |     );
+     : [31;1m    ^[0m
+ [2m349[0m | }
+ [2m350[0m | 
+ [2m351[0m | const isPhotographer = user.rol === 'FOTOGRAFO';
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./src/app/mis-reservas/page.tsx
+
+
+> Build failed because of webpack errors

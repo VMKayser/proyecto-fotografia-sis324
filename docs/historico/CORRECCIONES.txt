@@ -1,0 +1,41 @@
+﻿CORRECCIONES NECESARIAS PARA EL PROYECTO
+
+=== 1. PROBLEMA DEL QR NO SE GUARDA ===
+ SOLUCI\u00d3N: El QR YA se est\u00e1 guardando correctamente.
+- Los endpoints POST /api/profiles y PUT /api/profiles/[id] incluyen qrPagoUrl y qrInstrucciones
+- El schema.prisma tiene los campos definidos
+- El profileService.ts los maneja correctamente
+
+VERIFIC package.json del proyecto de
+
+ DESCOMENTANDO estas l\u00edneas en src\app\perfil-fotografo\page.tsx:
+  
+  L\u00edneas ~83-84: Descomentar
+    const [documentFile, setDocumentFile] = useState<File | null>(null);
+    const [uploadingDocument, setUploadingDocument] = useState(false);
+  
+  L\u00edneas ~240-242: Descomentar  
+    const handleDocumentFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+      setDocumentFile(event.target.files?.[0] || null);
+    };
+  
+  L\u00edneas ~278-302: Descomentar toda la funci\u00f3n handleUploadDocument
+
+2. AGREGAR SECCI\u00d3N DE VERIFICACI\u00d3N:
+   Insertar despu\u00e9s de la secci\u00f3n de Categor\u00edas (l\u00ednea ~850), antes del Portafolio
+
+=== 3. PROBLEMA DEL BOT\u00d3N DE DESTACAR ===
+ SOLUCI\u00d3N: El endpoint YA EXISTE en /api/profiles/destacado-request
+- El bot\u00f3n en destacar-perfil/page.tsx llama correctamente al endpoint
+- La tabla SolicitudDestacado existe en el schema
+- El admin puede revisar en /admin/solicitudes-destacado
+
+=== 4. PROBLEMA FLUJO DE RESERVAS ===
+SOLUCI\u00d3N: Modificar src\app\mis-reservas\page.tsx
+- Si se selecciona un paquete, auto-completar el monto
+- Cambiar el texto del bot\u00f3n de "Solicitar disponibilidad" a "Reservar paquete"
+
+=== 5. PROBLEMA FECHAS DOBLES ===
+SOLUCI\u00d3N: Agregar validaci\u00f3n en src\app\dashboard\calendario\page.tsx
+- Consultar fechas ocupadas antes de permitir selecci\u00f3n
+- Mostrar fechas bloqueadas en gris en el calendario

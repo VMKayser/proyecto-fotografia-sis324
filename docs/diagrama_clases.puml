@@ -1,0 +1,488 @@
+@startuml Sistema de Gestión de Servicios Fotográficos
+
+' Configuración del diagrama
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam backgroundColor #FEFEFE
+skinparam class {
+    BackgroundColor<<Usuario>> LightBlue
+    BackgroundColor<<Sistema>> LightYellow
+    BackgroundColor<<Transaccion>> LightGreen
+    BackgroundColor<<Comunicacion>> LightCoral
+    BackgroundColor<<Enum>> Wheat
+}
+
+' ===== ENUMERACIONES =====
+
+enum RolUsuario <<Enum>> {
+    CLIENTE
+    FOTOGRAFO
+    ADMIN
+}
+
+enum EstadoReserva <<Enum>> {
+    PENDIENTE
+    CONFIRMADA
+    CANCELADA
+    COMPLETADA
+    RECHAZADA
+}
+
+enum EstadoComprobante <<Enum>> {
+    NO_ENVIADO
+    PENDIENTE
+    APROBADO
+    RECHAZADO
+}
+
+enum TipoSolicitud <<Enum>> {
+    EDICION
+    CANCELACION
+}
+
+enum EstadoSolicitud <<Enum>> {
+    PENDIENTE
+    APROBADA
+    RECHAZADA
+}
+
+enum Moneda <<Enum>> {
+    BOB
+    USD
+}
+
+enum TipoNotificacion <<Enum>> {
+    RESERVA
+    MENSAJE
+    SISTEMA
+    PAGO
+}
+
+' ===== CLASE PRINCIPAL: USUARIO =====
+
+abstract class Usuario <<Usuario>> {
+    - id: Integer
+    - nombre: String
+    - nombreCompleto: String
+    - email: String {unique}
+    - passwordHash: String
+    - passwordSalt: String
+    - rol: RolUsuario
+    - telefono: String
+    - activo: Boolean
+    - emailVerificado: Boolean
+    - cancelacionesTotales: Integer
+    - suspendidoHasta: DateTime
+    - createdAt: DateTime
+    - updatedAt: DateTime
+    --
+    + registrar(email, password, nombre): Usuario
+    + iniciarSesion(email, password): Sesion
+    + actualizarPerfil(datos): Boolean
+    + cambiarPassword(oldPass, newPass): Boolean
+    + suspender(motivo, fechaHasta): Boolean
+    + activar(): Boolean
+}
+
+' ===== CLASES HEREDADAS =====
+
+class Cliente <<Usuario>> {
+    --
+    + buscarFotografos(filtros): List<PerfilFotografo>
+    + realizarReserva(fotografo, paquete, fecha): Reserva
+    + calificarServicio(reserva, calificacion, comentario): Resena
+    + subirComprobante(reserva, archivo): Boolean
+    + cancelarReserva(reserva, motivo): Boolean
+    + solicitarCambio(reserva, cambios): SolicitudCambio
+    + verMisReservas(): List<Reserva>
+}
+
+class Fotografo <<Usuario>> {
+    --
+    + crearPerfil(datos): PerfilFotografo
+    + gestionarPortafolio(imagenes): Boolean
+    + crearPaquete(datos): Paquete
+    + atenderReserva(reserva, accion): Boolean
+    + aprobarComprobante(reserva): Boolean
+    + responderResena(resena, texto): Boolean
+    + configurarDisponibilidad(fechas): BloqueoCalendario
+    + solicitarDestacado(dias, comprobante): SolicitudDestacado
+    + subirDocumento(archivo): Boolean
+}
+
+class Administrador <<Usuario>> {
+    --
+    + verificarFotografo(fotografo, decision): Boolean
+    + revisarSolicitudDestacado(solicitud, decision): Boolean
+    + configurarQR(imagen, instrucciones): Boolean
+    + gestionarUsuarios(usuario, accion): Boolean
+    + verEstadisticas(): Object
+    + generarReportes(tipo, filtros): Report
+}
+
+' ===== PERFIL FOTÓGRAFO =====
+
+class PerfilFotografo <<Usuario>> {
+    - id: Integer
+    - usuarioId: Integer
+    - nombrePublico: String
+    - biografia: Text
+    - ubicacion: String
+    - sitioWeb: String
+    - urlFotoPerfil: String
+    - urlFotoPortada: String
+    - urlDocumentoIdentidad: String
+    - qrPagoUrl: String
+    - qrInstrucciones: Text
+    - portfolio: Text
+    - calificacionPromedio: Decimal
+    - totalResenas: Integer
+    - verificado: Boolean
+    - destacadoHasta: DateTime
+    - politicaCancelacion: Text
+    --
+    + crear(): PerfilFotografo
+    + actualizar(datos): Boolean
+    + subirDocumento(archivo): Boolean
+    + solicitarDestacado(dias, comprobante): SolicitudDestacado
+    + actualizarCalificacion(): Decimal
+    + verificar(): Boolean
+    + destacar(dias): Boolean
+}
+
+' ===== PAQUETES Y SERVICIOS =====
+
+class Paquete <<Transaccion>> {
+    - id: Integer
+    - fotografoId: Integer
+    - titulo: String
+    - descripcion: Text
+    - precio: Decimal
+    - moneda: Moneda
+    - duracionHoras: String
+    - incluye: Text
+    - imagenUrl: String
+    - activo: Boolean
+    - destacado: Boolean
+    --
+    + crear(datos): Paquete
+    + actualizar(datos): Boolean
+    + activar(): Boolean
+    + desactivar(): Boolean
+    + eliminar(): Boolean
+}
+
+' ===== RESERVAS =====
+
+class Reserva <<Transaccion>> {
+    - id: Integer
+    - clienteId: Integer
+    - fotografoId: Integer
+    - paqueteId: Integer
+    - fechaEvento: Date
+    - horaEvento: String
+    - ubicacionEvento: String
+    - estado: EstadoReserva
+    - monto: Decimal
+    - comision: Decimal
+    - moneda: Moneda
+    - notas: Text
+    - comprobanteEstado: EstadoComprobante
+    - comprobanteUrl: String
+    - comprobanteNotas: Text
+    --
+    + crear(datos): Reserva
+    + confirmar(): Boolean
+    + rechazar(motivo): Boolean
+    + cancelar(motivo): Boolean
+    + completar(): Boolean
+    + subirComprobante(archivo): Boolean
+    + aprobarComprobante(): Boolean
+    + solicitarCambio(cambios): SolicitudCambio
+}
+
+' ===== RESEÑAS =====
+
+class Resena <<Transaccion>> {
+    - id: Integer
+    - reservaId: Integer
+    - calificacion: Integer
+    - comentario: Text
+    - publicadoPor: String
+    - respuesta: Text
+    - visible: Boolean
+    - createdAt: DateTime
+    --
+    + crear(calificacion, comentario): Resena
+    + responder(texto): Boolean
+    + ocultar(): Boolean
+    + mostrar(): Boolean
+}
+
+' ===== PORTAFOLIO =====
+
+class PortafolioAlbum <<Usuario>> {
+    - id: Integer
+    - fotografoId: Integer
+    - nombre: String
+    - slug: String
+    - descripcion: Text
+    - portadaUrl: String
+    - orden: Integer
+    - visible: Boolean
+    --
+    + crear(datos): PortafolioAlbum
+    + actualizar(datos): Boolean
+    + eliminar(): Boolean
+    + agregarImagen(imagen): PortafolioImagen
+}
+
+class PortafolioImagen <<Usuario>> {
+    - id: Integer
+    - fotografoId: Integer
+    - albumId: Integer
+    - urlImagen: String
+    - descripcion: Text
+    - orden: Integer
+    - destacada: Boolean
+    - album: String
+    --
+    + subir(archivo): PortafolioImagen
+    + actualizar(datos): Boolean
+    + eliminar(): Boolean
+    + reordenar(nuevoOrden): Boolean
+    + destacar(): Boolean
+}
+
+' ===== CATEGORÍAS =====
+
+class Categoria <<Sistema>> {
+    - id: Integer
+    - nombre: String
+    - tipo: String
+    - descripcion: Text
+    - icono: String
+    - activo: Boolean
+    - orden: Integer
+    --
+    + crear(datos): Categoria
+    + actualizar(datos): Boolean
+    + activar(): Boolean
+    + desactivar(): Boolean
+}
+
+class FotografoCategoria <<Sistema>> {
+    - id: Integer
+    - fotografoId: Integer
+    - categoriaId: Integer
+    - createdAt: DateTime
+    --
+    + asociar(fotografo, categoria): FotografoCategoria
+    + desasociar(): Boolean
+}
+
+' ===== SOLICITUDES =====
+
+class SolicitudDestacado <<Transaccion>> {
+    - id: Integer
+    - fotografoId: Integer
+    - dias: Integer
+    - precio: Decimal
+    - urlComprobante: String
+    - referenciaPago: String
+    - notasFotografo: Text
+    - estado: EstadoComprobante
+    - notasAdmin: Text
+    - revisadoPor: Integer
+    - fechaRevision: DateTime
+    --
+    + crear(dias, comprobante): SolicitudDestacado
+    + aprobar(admin): Boolean
+    + rechazar(admin, motivo): Boolean
+    + actualizarEstado(estado): Boolean
+}
+
+class SolicitudCambio <<Transaccion>> {
+    - id: Integer
+    - reservaId: Integer
+    - tipo: TipoSolicitud
+    - estado: EstadoSolicitud
+    - datosOriginales: JSON
+    - nuevaFecha: Date
+    - nuevaHora: String
+    - nuevaUbicacion: String
+    - motivoEdicion: Text
+    - motivoCancelacion: Text
+    - penalizacion: Decimal
+    - respuestaFotografo: Text
+    --
+    + crear(reserva, cambios): SolicitudCambio
+    + aprobar(respuesta): Boolean
+    + rechazar(respuesta): Boolean
+}
+
+' ===== CALENDARIO =====
+
+class BloqueoCalendario <<Sistema>> {
+    - id: Integer
+    - fotografoId: Integer
+    - fechaInicio: Date
+    - fechaFin: Date
+    - motivo: String
+    --
+    + crear(fechas, motivo): BloqueoCalendario
+    + eliminar(): Boolean
+    + verificarDisponibilidad(fecha): Boolean
+}
+
+' ===== COMUNICACIÓN =====
+
+class Conversacion <<Comunicacion>> {
+    - id: Integer
+    - reservaId: Integer
+    - clienteId: Integer
+    - fotografoId: Integer
+    - createdAt: DateTime
+    --
+    + iniciar(cliente, fotografo): Conversacion
+    + enviarMensaje(remitente, contenido): Mensaje
+    + cerrar(): Boolean
+}
+
+class Mensaje <<Comunicacion>> {
+    - id: Integer
+    - conversacionId: Integer
+    - remitenteId: Integer
+    - contenido: Text
+    - leido: Boolean
+    - createdAt: DateTime
+    --
+    + enviar(contenido): Mensaje
+    + marcarLeido(): Boolean
+    + eliminar(): Boolean
+}
+
+' ===== SISTEMA =====
+
+class Sesion <<Sistema>> {
+    - id: Integer
+    - usuarioId: Integer
+    - token: String
+    - ipAddress: String
+    - userAgent: String
+    - expiresAt: DateTime
+    --
+    + crear(usuario): Sesion
+    + validar(): Boolean
+    + eliminar(): Boolean
+    + renovar(): Boolean
+}
+
+class Notificacion <<Comunicacion>> {
+    - id: Integer
+    - usuarioId: Integer
+    - tipo: TipoNotificacion
+    - titulo: String
+    - mensaje: Text
+    - leido: Boolean
+    - enlace: String
+    - createdAt: DateTime
+    --
+    + enviar(usuario, tipo, mensaje): Notificacion
+    + marcarLeida(): Boolean
+    + eliminar(): Boolean
+}
+
+class ConfiguracionSistema <<Sistema>> {
+    - id: Integer
+    - clave: String {unique}
+    - valor: Text
+    - descripcion: Text
+    --
+    + obtener(clave): String
+    + actualizar(clave, valor): Boolean
+    + listar(): List<ConfiguracionSistema>
+}
+
+' ===== RELACIONES DE HERENCIA =====
+
+Usuario <|-- Cliente
+Usuario <|-- Fotografo
+Usuario <|-- Administrador
+
+' ===== RELACIONES 1:1 =====
+
+Fotografo "1" -- "1" PerfilFotografo : crea >
+Reserva "1" -- "0..1" Resena : genera >
+
+' ===== RELACIONES 1:* =====
+
+Usuario "1" -- "*" Sesion : tiene >
+Usuario "1" -- "*" Notificacion : recibe >
+
+Cliente "1" -- "*" Reserva : realiza >
+Fotografo "1" -- "*" Reserva : atiende >
+
+PerfilFotografo "1" -- "*" Paquete : ofrece >
+PerfilFotografo "1" -- "*" PortafolioImagen : posee >
+PerfilFotografo "1" -- "*" PortafolioAlbum : organiza >
+PerfilFotografo "1" -- "*" SolicitudDestacado : solicita >
+PerfilFotografo "1" -- "*" BloqueoCalendario : configura >
+
+Paquete "0..1" -- "*" Reserva : incluye >
+
+Reserva "1" -- "*" SolicitudCambio : puede tener >
+
+Conversacion "1" -- "*" Mensaje : contiene >
+
+PortafolioAlbum "1" -- "*" PortafolioImagen : agrupa >
+
+' ===== RELACIONES *:* (con tabla intermedia) =====
+
+PerfilFotografo "*" -- "*" Categoria
+(PerfilFotografo, Categoria) .. FotografoCategoria
+
+' ===== RELACIONES DE DEPENDENCIA =====
+
+Usuario ..> RolUsuario : usa
+Reserva ..> EstadoReserva : usa
+Reserva ..> EstadoComprobante : usa
+Reserva ..> Moneda : usa
+SolicitudDestacado ..> EstadoComprobante : usa
+SolicitudCambio ..> TipoSolicitud : usa
+SolicitudCambio ..> EstadoSolicitud : usa
+Notificacion ..> TipoNotificacion : usa
+Paquete ..> Moneda : usa
+
+' ===== NOTAS =====
+
+note top of Usuario
+    Clase abstracta padre
+    que define la estructura
+    básica de usuarios
+end note
+
+note right of PerfilFotografo
+    Información pública del fotógrafo.
+    Un Usuario con rol FOTOGRAFO
+    puede tener 1 PerfilFotografo
+end note
+
+note bottom of Reserva
+    Núcleo del sistema.
+    Conecta clientes con fotógrafos
+    a través de paquetes
+end note
+
+note left of ConfiguracionSistema
+    Almacena configuraciones globales
+    como QR de pago del admin
+end note
+
+note right of SolicitudDestacado
+    Permite a fotógrafos
+    solicitar visibilidad premium
+    por 7, 30 o 90 días
+end note
+
+@enduml

@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # Base de datos MySQL principal
+  mysql:
+    image: mysql:8.0
+    container_name: fotografia_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: fotografia_db
+      MYSQL_USER: foto_user
+      MYSQL_PASSWORD: foto_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+    networks:
+      - fotografia_network
+
+  # PHPMyAdmin para administrar la base de datos
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: fotografia_phpmyadmin
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: foto_user
+      PMA_PASSWORD: foto_pass
+    ports:
+      - "8080:80"
+    depends_on:
+      - mysql
+    networks:
+      - fotografia_network
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  fotografia_network:
+    driver: bridge
