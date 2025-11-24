@@ -2,7 +2,7 @@
 
 import React, { useEffect } from 'react';
 import Link from 'next/link';
-import { useAuth } from '@/frontend/repositories';
+import { useAuth } from '@/hooks';
 import { useRouter } from 'next/navigation';
 
 export default function AdminLayout({

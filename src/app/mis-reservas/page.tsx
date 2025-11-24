@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
-import { useAuth } from '@/frontend/repositories/AuthContext';
+import { useAuth } from '@/hooks';
 import { Card } from '@/frontend/components/ui/Card';
 import { Button } from '@/frontend/components/ui/Button';
 import { Modal } from '@/frontend/components/ui/Modal';

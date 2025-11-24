@@ -5,9 +5,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '@/frontend/repositories';
+import { useAuth } from '@/hooks';
 import { useRouter } from 'next/navigation';
-import { Card, Input, Button } from '@/frontend/components/ui';
+import { Card, Input, Button } from '@/components';
 
 export default function PerfilPage() {
   const { user, loading, token } = useAuth();

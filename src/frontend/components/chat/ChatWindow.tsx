@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useAuth } from '@/frontend/repositories';
-import { Button } from '@/frontend/components/ui';
+import { useAuth } from '@/hooks';
+import { Button } from '@/components';
 
 interface Message {
     id: number;

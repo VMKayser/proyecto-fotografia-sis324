@@ -6,8 +6,8 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { useAuth } from '@/frontend/repositories';
-import { Button, NotificationDropdown } from '@/frontend/components/ui';
+import { useAuth } from '@/hooks';
+import { Button, NotificationDropdown } from '@/components';
 
 export function Navbar() {
   const { user, logout } = useAuth();

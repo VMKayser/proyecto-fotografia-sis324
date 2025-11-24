@@ -6,7 +6,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Card } from '@/frontend/components/ui';
+import { Card } from '@/components';
 import { LoginForm } from '@/frontend/components/auth';
 
 export default function LoginPage() {

@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from 'react';
 import { StarRating } from './StarRating';
 import { ReviewResponseModal } from './ReviewResponseModal';
-import { useAuth } from '@/frontend/repositories';
+import { useAuth } from '@/hooks';
 
 interface Review {
     id: number;

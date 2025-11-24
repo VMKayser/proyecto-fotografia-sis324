@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/frontend/repositories/AuthContext';
+import { useAuth } from '@/hooks';
 import { useRouter } from 'next/navigation';
-import { Card, Button } from '@/frontend/components/ui';
+import { Card, Button } from '@/components';
 import Image from 'next/image';
 
 interface ConfiguracionSistema {

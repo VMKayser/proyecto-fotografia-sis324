@@ -9,8 +9,8 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { IPerfilFotografo, ICategoria } from '@/frontend/interfaces';
-import { Button, Card, Input } from '@/frontend/components/ui';
-import { useAuth } from '@/frontend/repositories';
+import { Button, Card, Input } from '@/components';
+import { useAuth } from '@/hooks';
 
 const ratingSteps = [0, 3, 4, 4.5];
 const sortOptions = [

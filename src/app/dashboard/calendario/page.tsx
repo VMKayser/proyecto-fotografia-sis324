@@ -2,8 +2,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Card, Button, Input } from '@/frontend/components/ui';
-import { useAuth } from '@/frontend/repositories';
+import { Card, Button, Input } from '@/components';
+import { useAuth } from '@/hooks';
 
 type Bloqueo = {
   id: number;

@@ -8,8 +8,8 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { Button, Card, Input } from '@/frontend/components/ui';
-import { useAuth } from '@/frontend/repositories';
+import { Button, Card, Input } from '@/components';
+import { useAuth } from '@/hooks';
 
 interface PhotographerProfile {
   id: number;

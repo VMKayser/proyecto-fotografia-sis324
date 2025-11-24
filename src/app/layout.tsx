@@ -5,7 +5,7 @@
 
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import { AuthProvider, NotificationProvider } from '@/frontend/repositories';
+import { AuthProvider, NotificationProvider } from '@/hooks';
 import { Navbar, Footer } from '@/frontend/components/layout';
 import './globals.css';
 

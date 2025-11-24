@@ -5,10 +5,10 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useAuth } from '@/frontend/repositories';
+import { useAuth } from '@/hooks';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { Card, Button } from '@/frontend/components/ui';
+import { Card, Button } from '@/components';
 import Link from 'next/link';
 import { EstadoComprobante, IPerfilFotografo, IPaquete, IReserva, IUsuario } from '@/frontend/interfaces';
 

@@ -7,7 +7,7 @@
 
 import React, { useState } from 'react';
 import { StarRating } from './StarRating';
-import { Button } from '@/frontend/components/ui';
+import { Button } from '@/components';
 
 interface ReviewModalProps {
     isOpen: boolean;

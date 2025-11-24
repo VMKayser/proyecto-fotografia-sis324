@@ -7,7 +7,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Button, Input, Card } from '@/frontend/components/ui';
+import { Button, Input, Card } from '@/components';
 import { IPerfilFotografo, ICategoria } from '@/frontend/interfaces';
 
 const defaultHeroStats = [

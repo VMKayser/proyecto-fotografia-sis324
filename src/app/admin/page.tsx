@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Card, Button } from '@/frontend/components/ui';
+import { Card, Button } from '@/components';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 

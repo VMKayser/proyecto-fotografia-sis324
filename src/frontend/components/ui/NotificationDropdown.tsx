@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useAuth } from '@/frontend/repositories/AuthContext';
+import { useAuth } from '@/hooks';
 
 type Notification = {
     id: number;

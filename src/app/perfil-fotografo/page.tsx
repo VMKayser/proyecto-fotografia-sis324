@@ -3,9 +3,9 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useAuth } from '@/frontend/repositories';
+import { useAuth } from '@/hooks';
 import { useRouter } from 'next/navigation';
-import { Card, Input, Button } from '@/frontend/components/ui';
+import { Card, Input, Button } from '@/components';
 
 type Category = {
   id: number;

@@ -6,7 +6,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Button } from '@/frontend/components/ui';
+import { Button } from '@/components';
 
 interface ReviewResponseModalProps {
     isOpen: boolean;

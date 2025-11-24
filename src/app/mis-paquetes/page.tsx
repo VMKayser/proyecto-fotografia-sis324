@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/frontend/repositories/AuthContext';
+import { useAuth } from '@/hooks';
 import { Card } from '@/frontend/components/ui/Card';
 import { Button } from '@/frontend/components/ui/Button';
 import { Input } from '@/frontend/components/ui/Input';

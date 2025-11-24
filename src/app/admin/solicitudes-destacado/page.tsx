@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Card, Button } from '@/frontend/components/ui';
-import { useAuth } from '@/frontend/repositories';
+import { Card, Button } from '@/components';
+import { useAuth } from '@/hooks';
 
 interface FeaturedRequest {
   id: number;

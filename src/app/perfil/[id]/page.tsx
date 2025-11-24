@@ -4,10 +4,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Button, Card } from '@/frontend/components/ui';
+import { Button, Card } from '@/components';
 import { ReviewList } from '@/frontend/components/reviews';
 import { IPerfilFotografo, IUsuario } from '@/frontend/interfaces';
-import { useAuth } from '@/frontend/repositories';
+import { useAuth } from '@/hooks';
 import { AuthService } from '@/frontend/services';
 
 interface ProfileApiResponse {

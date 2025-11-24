@@ -7,8 +7,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Card, Input } from '@/frontend/components/ui';
-import { useAuth } from '@/frontend/repositories';
+import { Button, Card, Input } from '@/components';
+import { useAuth } from '@/hooks';
 
 interface Photographer {
   id: number;

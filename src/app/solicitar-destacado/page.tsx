@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/frontend/repositories/AuthContext';
+import { useAuth } from '@/hooks';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 
