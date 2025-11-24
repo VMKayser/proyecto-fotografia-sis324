@@ -57,3 +57,6 @@ public/uploads/
 # Logs
 logs/
 *.log
+
+# Documentación propia (no subir a GitHub)
+docs/
