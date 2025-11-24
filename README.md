@@ -133,3 +133,5 @@ Proyecto académico - SIS324
 ---
 
 Para más información, revisa la [documentación completa](./docs/README.md).
+
+<!-- Deploy a Vercel -->
